@@ -52,14 +52,16 @@ library(caret)
 library(multcomp)
 library(ROCR)
 library(PRROC)
+library(nnet)
+
 
 ###############################
 # SET DIRECTORY AND READ FILE #
 ###############################
 
-figs_dir = "C:\\Users\\mcampi\\Desktop\\Sylvette\\paper_ethiologies_HL_VF\\data\\figs\\"
+figs_dir = "/data/figs/"
 
-mydir<- "C:\\Users\\mcampi\\Desktop\\Sylvette\\paper_ethiologies_HL_VF\\data\\"
+mydir<- "/data/"
 
 
 
@@ -353,62 +355,112 @@ chisq.test(new_data$VB, new_data$Etiology2)
 # Logit #
 #########
 
+new_data2 = new_data
+new_data2$VB2 = new_data2$VB
+levels(new_data2$VB2) = c(2,1,0)
+
 set.seed(1)
-index1 <- sample(nrow(new_data_NV_PVF),nrow(new_data_NV_PVF)*0.80)
-new_data_NV_PVF_train = new_data_NV_PVF[index1,]
-new_data_NV_PVF_test = new_data_NV_PVF[-index1,]
+index1 <- sample(nrow(new_data2),nrow(new_data2)*0.80)
+new_data2_train = new_data2[index1,]
+new_data2_test = new_data2[-index1,]
+
+new_data2_train$VB2 <- as.factor(new_data2_train$VB2)
+new_data2_test$VB2 <- as.factor(new_data2_test$VB2)
 
 
-fit <- glm(VB ~ age_head + age_sit + age_stand_support + age_walking + Etiology2,
-                weights =age_walking,
-                family = binomial(link = "logit"),
-                data = new_data_NV_PVF_train) #new_data_NV_PVF
+model1 <- multinom(VB2 ~ age_head, 
+                   data = new_data2_train)
 
-summary(fit)
+model2 <- multinom(VB2 ~ age_sit, 
+                   data = new_data2_train)
 
-## odds ratios and 95% CI
-coef(fit)
-exp(cbind(OR = coef(fit), confint(fit)))
+model3 <- multinom(VB2 ~ age_stand_support, 
+                   data = new_data2_train)
 
+model4 <- multinom(VB2 ~ age_walking, 
+                   data = new_data2_train)
 
-index2 <- sample(nrow(new_data_NV_CBVL),nrow(new_data_NV_CBVL)*0.80)
-new_new_data_NV_CBVL_train = new_data_NV_CBVL[index2,]
-new_new_data_NV_CBVL_test = new_data_NV_CBVL[-index2,]
-
+model5 <- multinom(VB2 ~ Etiology2, 
+                   data = new_data2_train)
 
 
-fit2 = glm(VB ~  age_sit + age_stand_support + age_walking + Etiology2,
-           weights = age_walking,
-           family = binomial(link = "logit"),
-           data = new_new_data_NV_CBVL_train)#new_new_data_NV_CBVL
 
-summary(fit2 )
-coef(fit2)
-confint(fit2)
+
+summary(model1)
+summary(model2)
+summary(model3)
+summary(model4)
+summary(model5)
+
+
 
 #############
 # ROC Curve #
 #############
 
-#automatic
-library(pROC)
-test_prob = predict(fit, newdata = new_data_NV_PVF_test[-c(2:4),], type = "response")
-test_roc = roc(new_data_NV_PVF_test[-c(2:4),]$VB2 ~ test_prob, plot = TRUE, print.auc = TRUE)
 
-#AUC
-as.numeric(test_roc$auc)
-# Get the cutoff value at the optimal point on the ROC curve
-coords(test_roc, "best", ret = "threshold")
+test_prob1 <- predict(model1, newdata = new_data2_test[, 'age_head'])
+test_roc1 = multiclass.roc(new_data2_test$VB2, test_prob1, type = "probs")
 
 
-test_prob = predict(fit, newdata = new_new_data_NV_CBVL_test, type = "response")
-test_roc = roc(new_new_data_NV_CBVL_test$VB2 ~ test_prob,
-               plot = TRUE,
-               print.auc = TRUE)
-#AUC
-as.numeric(test_roc$auc)
-# Get the cutoff value at the optimal point on the ROC curve
-coords(test_roc, "best", ret = "threshold")
+test_prob2 = predict(model2, newdata = new_data2_test[,'age_sit'])
+test_roc2 = multiclass.roc(new_data2_test$VB2, test_prob2, type = "probs")
 
+test_prob3 = predict(model3, newdata = new_data2_test[,'age_stand_support'])
+test_roc3 = multiclass.roc(new_data2_test$VB2, test_prob3, type = "probs")
+
+
+test_prob4 = predict(model4, newdata = new_data2_test[,'age_walking'])
+test_roc4 = multiclass.roc(new_data2_test$VB2, test_prob4, type = "probs")
+
+test_prob5 = predict(model5, newdata = new_data2_test[,'Etiology2'])
+test_roc5 = multiclass.roc(new_data2_test$VB2, test_prob5, type = "probs")
+
+
+
+###########
+# CUT OFF #
+###########
+
+# Create a sequence of cutoff values
+cutoff_values <- seq(0, 1, by = 0.05)
+
+# Create an empty data frame to store results
+cutoff_data <- data.frame(Cutoff = numeric(length(cutoff_values)),
+                          Sensitivity = numeric(length(cutoff_values)),
+                          Specificity = numeric(length(cutoff_values)))
+
+# Loop through cutoff values
+for (i in seq_along(cutoff_values)) {
+  cutoff <- cutoff_values[i]
+  
+  # Create a binary outcome based on the current cutoff
+  predicted_class <- ifelse(test_prob2 > cutoff, 1, 0)
+  
+  # Create confusion matrix
+  confusion_matrix <- table(predicted_class, new_data_NV_PVF_test$VB2)
+  
+  # Ensure that confusion matrix has both rows and columns
+  if (nrow(confusion_matrix) == 2 && ncol(confusion_matrix) == 2) {
+    # Calculate sensitivity and specificity
+    sensitivity <- confusion_matrix[2, 2] / sum(confusion_matrix[2, ])
+    specificity <- confusion_matrix[1, 1] / sum(confusion_matrix[1, ])
+    
+    # Store results in the data frame
+    cutoff_data[i, ] <- c(cutoff, sensitivity, specificity)
+  } else {
+    # Handle the case where the confusion matrix does not have the expected structure
+    cat("Warning: Confusion matrix does not have the expected structure for cutoff =", cutoff, "\n")
+  }
+}
+
+# Find the optimal cutoff based on a criterion (e.g., maximizing sensitivity + specificity)
+optimal_cutoff_index <- which.max(cutoff_data$Sensitivity + cutoff_data$Specificity)
+optimal_cutoff <- cutoff_data$Cutoff[optimal_cutoff_index]
+
+# Print the optimal cutoff and corresponding sensitivity and specificity
+cat("Optimal Cutoff:", optimal_cutoff, "\n")
+cat("Sensitivity at Optimal Cutoff:", cutoff_data$Sensitivity[optimal_cutoff_index], "\n")
+cat("Specificity at Optimal Cutoff:", cutoff_data$Specificity[optimal_cutoff_index], "\n")
 
 
