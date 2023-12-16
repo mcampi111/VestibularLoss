@@ -1,5 +1,5 @@
 # VestibularLoss
-Repository with data and code of the paper "Vestibular impairment in children with profound hearing loss before cochlear implantation: prevalence and impact on postural and motor development."
+Repository with R code of the paper "Vestibular impairment in children with profound hearing loss before cochlear implantation: prevalence and impact on postural and motor development." Data are available under request.
 
 # Abstract 
 
